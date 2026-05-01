@@ -1,9 +1,10 @@
 """Command: importa resultados oficiais da Mega-Sena.
 
-Suporta três fontes (em ordem de precedência):
-  1. --html <path>  : caminho para um arquivo HTML/HTM já extraído
-  2. --zip  <path>  : caminho para um ZIP local; o arquivo HTML é encontrado dentro
-  3. --download     : baixa o ZIP da Caixa via MEGASENA_RESULTS_URL e processa
+Fontes suportadas (em ordem de precedência):
+  1. --xlsx <path>  : planilha oficial atual da Caixa (formato vigente desde ~2025)
+  2. --html <path>  : HTML/HTM já extraído (formato antigo, ainda no histórico)
+  3. --zip  <path>  : ZIP local contendo HTML/HTM
+  4. --download     : baixa o arquivo da Caixa via MEGASENA_RESULTS_URL
 """
 
 from __future__ import annotations
@@ -15,31 +16,41 @@ from pathlib import Path
 from django.core.management.base import BaseCommand, CommandError
 
 from resultados.services.caixa_downloader import baixar_zip
-from resultados.services.megasena_importer import importar_de_arquivo_html
+from resultados.services.megasena_importer import (
+    importar_de_arquivo_html,
+    importar_de_arquivo_xlsx,
+)
 from resultados.services.zip_extractor import extrair_zip
 
 
 class Command(BaseCommand):
-    help = "Importa resultados oficiais da Mega-Sena a partir de HTML, ZIP local ou download."
+    help = "Importa resultados oficiais da Mega-Sena a partir de XLSX, HTML, ZIP ou download."
 
     def add_arguments(self, parser):
+        parser.add_argument("--xlsx", default=None, help="Caminho de um XLSX da Caixa.")
         parser.add_argument("--html", default=None, help="Caminho de um HTML já extraído.")
         parser.add_argument("--zip", default=None, dest="zip_path", help="Caminho de um ZIP local.")
         parser.add_argument(
             "--download",
             action="store_true",
-            help="Baixa o ZIP da Caixa (requer MEGASENA_RESULTS_URL no .env).",
+            help="Baixa o arquivo da Caixa (requer MEGASENA_RESULTS_URL no .env).",
         )
-        parser.add_argument("--url", default=None, help="Sobrescreve a URL do ZIP.")
+        parser.add_argument("--url", default=None, help="Sobrescreve a URL.")
 
     def handle(self, *args, **options):
-        html_path = self._resolver_html(options)
-        try:
-            resumo = importar_de_arquivo_html(html_path)
-        finally:
-            tmpdir = getattr(self, "_tmpdir", None)
-            if tmpdir:
-                shutil.rmtree(tmpdir, ignore_errors=True)
+        if options["xlsx"]:
+            xlsx_path = Path(options["xlsx"])
+            if not xlsx_path.exists():
+                raise CommandError(f"XLSX não encontrado: {xlsx_path}")
+            resumo = importar_de_arquivo_xlsx(xlsx_path)
+        else:
+            html_path = self._resolver_html(options)
+            try:
+                resumo = importar_de_arquivo_html(html_path)
+            finally:
+                tmpdir = getattr(self, "_tmpdir", None)
+                if tmpdir:
+                    shutil.rmtree(tmpdir, ignore_errors=True)
 
         self.stdout.write(self.style.SUCCESS("Resumo da importação Mega-Sena:"))
         for k, v in resumo.items():
