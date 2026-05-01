@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8">
+  <title>{% block title %}Loteria{% endblock %}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; margin: 0; background: #f4f5f7; color: #1f2733; }
+    header { background: #1f2733; color: #fff; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; }
+    header h1 { font-size: 18px; font-weight: 600; margin: 0; }
+    header .total { background: #2ecc71; color: #0a3a1d; padding: 6px 14px; border-radius: 6px; font-weight: 600; }
+    main { padding: 24px; max-width: 1200px; margin: 0 auto; }
+    section { background: #fff; border: 1px solid #dde1e7; border-radius: 8px; padding: 16px 18px; margin-bottom: 18px; }
+    section h2 { margin-top: 0; font-size: 16px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #ecedef; font-size: 14px; }
+    th { background: #f7f8fa; font-weight: 600; }
+    tbody tr:hover { background: #fafbfc; }
+    form.filtros { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; align-items: end; }
+    form.filtros label { display: block; font-size: 12px; color: #5a6471; margin-bottom: 4px; }
+    form.filtros input, form.filtros select { width: 100%; padding: 6px 8px; border: 1px solid #cfd4db; border-radius: 6px; }
+    form.filtros button { padding: 8px 14px; background: #2563eb; color: #fff; border: 0; border-radius: 6px; cursor: pointer; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .badge { background: #eef2ff; color: #1e3a8a; padding: 2px 8px; border-radius: 999px; font-size: 12px; }
+    .empty { color: #6b7280; font-style: italic; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Loterias da Caixa — Comprovantes</h1>
+    <span class="total">Total gasto: R$ {{ total_gasto|floatformat:2 }}</span>
+  </header>
+  <main>{% block content %}{% endblock %}</main>
+</body>
+</html>

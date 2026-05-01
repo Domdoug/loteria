@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Comprovantes — Loteria{% endblock %}
+
+{% block content %}
+<section>
+  <h2>Filtros</h2>
+  <form method="get" class="filtros">
+    <div>
+      <label for="{{ form.data_inicio.id_for_label }}">{{ form.data_inicio.label }}</label>
+      {{ form.data_inicio }}
+    </div>
+    <div>
+      <label for="{{ form.data_fim.id_for_label }}">{{ form.data_fim.label }}</label>
+      {{ form.data_fim }}
+    </div>
+    <div>
+      <label for="{{ form.tipo_jogo.id_for_label }}">{{ form.tipo_jogo.label }}</label>
+      {{ form.tipo_jogo }}
+    </div>
+    <div>
+      <label>{{ form.ver_outros }} {{ form.ver_outros.label }}</label>
+      <button type="submit">Aplicar</button>
+    </div>
+  </form>
+</section>
+
+<div class="grid-2">
+  <section>
+    <h2>Total por tipo de jogo</h2>
+    {% if total_por_tipo_jogo %}
+    <table>
+      <thead><tr><th>Jogo</th><th>Comprovantes</th><th>Total (R$)</th></tr></thead>
+      <tbody>
+        {% for item in total_por_tipo_jogo %}
+        <tr>
+          <td>{{ item.tipo_jogo__nome }}</td>
+          <td>{{ item.comprovantes }}</td>
+          <td>{{ item.total|floatformat:2 }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<p class="empty">Sem dados para os filtros atuais.</p>{% endif %}
+  </section>
+
+  <section>
+    <h2>Números mais sorteados — Mega-Sena (oficial)</h2>
+    {% if numeros_mais_sorteados_megasena %}
+    <table>
+      <thead><tr><th>Dezena</th><th>Frequência</th></tr></thead>
+      <tbody>
+        {% for numero, freq in numeros_mais_sorteados_megasena %}
+        <tr><td>{{ numero }}</td><td>{{ freq }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty">Nenhum resultado oficial importado ainda. Use <code>python manage.py importar_resultados_megasena --download</code> ou <code>--zip &lt;arquivo.zip&gt;</code>.</p>
+    {% endif %}
+  </section>
+
+  <section>
+    <h2>Números mais escolhidos (apostados)</h2>
+    {% if numeros_mais_jogados %}
+    <table>
+      <thead><tr><th>Número</th><th>Frequência</th></tr></thead>
+      <tbody>
+        {% for numero, freq in numeros_mais_jogados %}
+        <tr><td>{{ numero }}</td><td>{{ freq }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty">Os números apostados ainda não estão disponíveis para estatística (PDFs não trazem as dezenas em texto selecionável; OCR está fora do MVP).</p>
+    {% endif %}
+  </section>
+</div>
+
+<section>
+  <h2>Comprovantes</h2>
+  {% if comprovantes %}
+  <table>
+    <thead>
+      <tr>
+        <th>Data</th>
+        <th>Tipo de jogo</th>
+        <th>Apostas</th>
+        <th>Concursos</th>
+        <th>Valor (R$)</th>
+        <th>Arquivo</th>
+        <th>Cód. compra</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in comprovantes %}
+      <tr>
+        <td>{{ c.data_jogo|default:"—" }}</td>
+        <td><span class="badge">{{ c.tipo_jogo.nome }}</span></td>
+        <td>{{ c.apostas.count }}</td>
+        <td>
+          {% for a in c.apostas.all %}{{ a.concurso }}{% if not forloop.last %}, {% endif %}{% endfor %}
+        </td>
+        <td>{{ c.valor_total_aposta|floatformat:2 }}</td>
+        <td>{{ c.arquivo_importado.nome_arquivo_atual }}</td>
+        <td>{{ c.codigo_autenticacao|default:"—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="empty">Nenhum comprovante encontrado para os filtros atuais.</p>{% endif %}
+</section>
+{% endblock %}

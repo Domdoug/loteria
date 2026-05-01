@@ -1,0 +1,40 @@
+roteiro.md
+CLAUDE.md
+.git
+
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+db.sqlite3
+db.sqlite3-journal
+
+.env
+staticfiles/
+media/
+
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Pasta de PDFs: rastrear o diretório, não os arquivos
+pdfs/*
+!pdfs/.gitkeep
+
+# Arquivos de dados na raiz (não commitar)
+Mega-Sena.xlsx
+*.xlsx
+_failed_parser_dump.txt
+_test_megasena.htm
+_test_pdfs/
+
+# Estado da sessão do Claude Code (não pertence ao repositório)
+.claude/
