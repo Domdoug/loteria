@@ -17,7 +17,7 @@ from .file_rename import apply_rename, propose_rename
 from .hash_service import file_sha256
 from .normalizer import normalize
 from .parser import parse_compra
-from .pdf_reader import extract_text
+from .pdf_reader import PdfTextResult, extract_text
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +41,127 @@ def _log(arquivo: ArquivoImportado | None, etapa: str, mensagem: str, nivel: str
 def _get_or_create_tipo_jogo(nome: str) -> TipoJogo:
     tipo, _ = TipoJogo.objects.get_or_create(nome=nome)
     return tipo
+
+
+def _persist_comprovantes(arquivo: ArquivoImportado, texto_resultado: PdfTextResult) -> int:
+    """Faz parse do texto e persiste comprovantes vinculados ao arquivo.
+
+    Atualiza os campos texto_extraido, quantidade_paginas, status_importacao e
+    mensagem_erro no objeto arquivo, mas NÃO chama save() — responsabilidade do chamador.
+
+    Retorna o número de comprovantes criados.
+    """
+    texto_normalizado = normalize(texto_resultado.texto)
+
+    if not texto_normalizado:
+        arquivo.texto_extraido = ""
+        arquivo.status_importacao = ArquivoImportado.Status.FALHA
+        arquivo.mensagem_erro = "Texto extraído vazio após normalização"
+        return 0
+
+    arquivo.texto_extraido = texto_normalizado
+    arquivo.quantidade_paginas = texto_resultado.paginas
+
+    if texto_resultado.aviso:
+        _log(arquivo, "extracao", texto_resultado.aviso, nivel=LogImportacao.Nivel.WARNING)
+
+    compra = parse_compra(texto_normalizado)
+    for aviso in compra.avisos:
+        _log(arquivo, "parser", aviso, nivel=LogImportacao.Nivel.WARNING)
+
+    comprovantes_criados = 0
+    for comp in compra.comprovantes:
+        tipo = _get_or_create_tipo_jogo(comp.tipo_jogo)
+        apostas_com_dezenas = sum(1 for a in comp.apostas if a.dezenas)
+        if apostas_com_dezenas == 0:
+            observacoes = "Layout novo: dezenas apostadas não constam no texto do PDF."
+        elif apostas_com_dezenas < len(comp.apostas):
+            observacoes = f"Dezenas extraídas em {apostas_com_dezenas}/{len(comp.apostas)} apostas."
+        else:
+            observacoes = ""
+        comprovante = Comprovante.objects.create(
+            arquivo_importado=arquivo,
+            tipo_jogo=tipo,
+            data_jogo=compra.data_compra,
+            valor_total_aposta=comp.valor_total,
+            codigo_autenticacao=compra.numero_compra,
+            observacoes=observacoes,
+        )
+        apostas_criadas = Aposta.objects.bulk_create(
+            [
+                Aposta(
+                    comprovante=comprovante,
+                    sequencia=ap.sequencia,
+                    concurso=ap.concurso,
+                    descricao=f"Concurso {ap.concurso}",
+                    valor_aposta=ap.valor,
+                )
+                for ap in comp.apostas
+            ]
+        )
+        numeros_a_criar: list[NumeroApostado] = []
+        for aposta_obj, ap in zip(apostas_criadas, comp.apostas):
+            for ordem, numero in enumerate(ap.dezenas, start=1):
+                numeros_a_criar.append(
+                    NumeroApostado(aposta=aposta_obj, ordem=ordem, numero=numero)
+                )
+        if numeros_a_criar:
+            NumeroApostado.objects.bulk_create(numeros_a_criar)
+        comprovantes_criados += 1
+
+    if comprovantes_criados == 0:
+        arquivo.status_importacao = ArquivoImportado.Status.FALHA
+        arquivo.mensagem_erro = "Nenhum comprovante reconhecido no parser."
+    else:
+        arquivo.status_importacao = ArquivoImportado.Status.SUCESSO
+        arquivo.mensagem_erro = ""
+
+    return comprovantes_criados
+
+
+def reprocess_arquivo(arquivo: ArquivoImportado, *, force_ocr: bool = False) -> bool:
+    """Reprocessa um ArquivoImportado com falha usando OCR.
+
+    Limpa comprovantes existentes, re-extrai texto e re-persiste.
+    Retorna True se pelo menos um comprovante foi criado.
+    """
+    path = Path(arquivo.caminho_arquivo)
+
+    arquivo.status_importacao = ArquivoImportado.Status.EM_PROCESSAMENTO
+    arquivo.data_importacao = timezone.now()
+    arquivo.save(update_fields=["status_importacao", "data_importacao"])
+
+    try:
+        texto_resultado = extract_text(path, force_ocr=force_ocr)
+    except Exception as exc:
+        arquivo.status_importacao = ArquivoImportado.Status.FALHA
+        arquivo.mensagem_erro = f"extração falhou: {exc.__class__.__name__}: {exc}"
+        arquivo.save(update_fields=["status_importacao", "mensagem_erro"])
+        _log(arquivo, "extracao", str(exc), nivel=LogImportacao.Nivel.ERROR)
+        return False
+
+    try:
+        with transaction.atomic():
+            # limpa dados anteriores vinculados a este arquivo
+            Comprovante.objects.filter(arquivo_importado=arquivo).delete()
+
+            comprovantes = _persist_comprovantes(arquivo, texto_resultado)
+            arquivo.save(
+                update_fields=[
+                    "texto_extraido",
+                    "quantidade_paginas",
+                    "status_importacao",
+                    "mensagem_erro",
+                ]
+            )
+    except Exception as exc:
+        logger.exception("Falha ao reprocessar %s", arquivo.nome_arquivo_atual)
+        arquivo.status_importacao = ArquivoImportado.Status.FALHA
+        arquivo.mensagem_erro = f"persistência falhou: {exc.__class__.__name__}: {exc}"
+        arquivo.save(update_fields=["status_importacao", "mensagem_erro"])
+        return False
+
+    return comprovantes > 0
 
 
 def import_folder(folder: Path, *, dry_run: bool = False) -> ImportSummary:
@@ -113,7 +234,7 @@ def import_folder(folder: Path, *, dry_run: bool = False) -> ImportSummary:
             summary.importados += 1
             continue
 
-        # 3) extração de texto
+        # 3) extração de texto (pdfplumber → pypdf → OCR automático)
         try:
             texto_resultado = extract_text(path)
         except Exception as exc:  # noqa: BLE001
@@ -126,39 +247,10 @@ def import_folder(folder: Path, *, dry_run: bool = False) -> ImportSummary:
                 status_importacao=ArquivoImportado.Status.FALHA,
                 mensagem_erro=f"extração falhou: {exc.__class__.__name__}: {exc}",
             )
-            _log(
-                arquivo,
-                "extracao",
-                str(exc),
-                nivel=LogImportacao.Nivel.ERROR,
-            )
-            continue
-
-        texto_normalizado = normalize(texto_resultado.texto)
-
-        if not texto_normalizado:
-            summary.falhas += 1
-            arquivo = ArquivoImportado.objects.create(
-                nome_arquivo_original=original_name,
-                nome_arquivo_atual=nome_atual,
-                caminho_arquivo=str(path),
-                hash_arquivo=digest,
-                quantidade_paginas=texto_resultado.paginas,
-                texto_extraido="",
-                status_importacao=ArquivoImportado.Status.FALHA,
-                mensagem_erro="PDF sem texto selecionável (provavelmente baseado em imagem)",
-            )
-            _log(
-                arquivo,
-                "extracao",
-                "texto vazio em ambos extratores; OCR seria necessário",
-                nivel=LogImportacao.Nivel.WARNING,
-            )
+            _log(arquivo, "extracao", str(exc), nivel=LogImportacao.Nivel.ERROR)
             continue
 
         # 4) parse + persistência
-        compra = parse_compra(texto_normalizado)
-
         try:
             with transaction.atomic():
                 arquivo = ArquivoImportado.objects.create(
@@ -166,66 +258,19 @@ def import_folder(folder: Path, *, dry_run: bool = False) -> ImportSummary:
                     nome_arquivo_atual=nome_atual,
                     caminho_arquivo=str(path),
                     hash_arquivo=digest,
-                    quantidade_paginas=texto_resultado.paginas,
-                    texto_extraido=texto_normalizado,
                     status_importacao=ArquivoImportado.Status.EM_PROCESSAMENTO,
                     data_importacao=timezone.now(),
                 )
-                if texto_resultado.aviso:
-                    _log(arquivo, "extracao", texto_resultado.aviso, nivel=LogImportacao.Nivel.WARNING)
-                for aviso in compra.avisos:
-                    _log(arquivo, "parser", aviso, nivel=LogImportacao.Nivel.WARNING)
 
-                comprovantes_criados = 0
-                for comp in compra.comprovantes:
-                    tipo = _get_or_create_tipo_jogo(comp.tipo_jogo)
-                    apostas_com_dezenas = sum(1 for a in comp.apostas if a.dezenas)
-                    if apostas_com_dezenas == 0:
-                        observacoes = (
-                            "Layout novo: dezenas apostadas não constam no texto do PDF."
-                        )
-                    elif apostas_com_dezenas < len(comp.apostas):
-                        observacoes = (
-                            f"Dezenas extraídas em {apostas_com_dezenas}/{len(comp.apostas)} apostas."
-                        )
-                    else:
-                        observacoes = ""
-                    comprovante = Comprovante.objects.create(
-                        arquivo_importado=arquivo,
-                        tipo_jogo=tipo,
-                        data_jogo=compra.data_compra,
-                        valor_total_aposta=comp.valor_total,
-                        codigo_autenticacao=compra.numero_compra,
-                        observacoes=observacoes,
-                    )
-                    apostas_criadas = Aposta.objects.bulk_create(
-                        [
-                            Aposta(
-                                comprovante=comprovante,
-                                sequencia=ap.sequencia,
-                                concurso=ap.concurso,
-                                descricao=f"Concurso {ap.concurso}",
-                                valor_aposta=ap.valor,
-                            )
-                            for ap in comp.apostas
-                        ]
-                    )
-                    numeros_a_criar: list[NumeroApostado] = []
-                    for aposta_obj, ap in zip(apostas_criadas, comp.apostas):
-                        for ordem, numero in enumerate(ap.dezenas, start=1):
-                            numeros_a_criar.append(
-                                NumeroApostado(aposta=aposta_obj, ordem=ordem, numero=numero)
-                            )
-                    if numeros_a_criar:
-                        NumeroApostado.objects.bulk_create(numeros_a_criar)
-                    comprovantes_criados += 1
-
-                if comprovantes_criados == 0:
-                    arquivo.status_importacao = ArquivoImportado.Status.FALHA
-                    arquivo.mensagem_erro = "Nenhum comprovante reconhecido no parser."
-                else:
-                    arquivo.status_importacao = ArquivoImportado.Status.SUCESSO
-                arquivo.save(update_fields=["status_importacao", "mensagem_erro"])
+                comprovantes_criados = _persist_comprovantes(arquivo, texto_resultado)
+                arquivo.save(
+                    update_fields=[
+                        "texto_extraido",
+                        "quantidade_paginas",
+                        "status_importacao",
+                        "mensagem_erro",
+                    ]
+                )
         except Exception as exc:  # noqa: BLE001
             summary.falhas += 1
             logger.exception("Falha persistindo %s", nome_atual)
