@@ -64,6 +64,13 @@ _DATA_COMPRA_RE = re.compile(r"Data\s+da\s+Compra:\s*(\d{2})/(\d{2})/(\d{4})", r
 _NUMERO_COMPRA_RE = re.compile(r"N[uú]mero\s+da\s+Compra:\s*(\S+)", re.IGNORECASE)
 # Layout antigo expõe a data como "Hora DF: HH:MM:SS Data: dd/mm/aaaa"
 _DATA_ANTIGA_RE = re.compile(r"Data:\s*(\d{2})/(\d{2})/(\d{4})", re.IGNORECASE)
+# OCR row-sorted: palavras embaralhadas na linha.
+# Dois subformatos observados:
+#   2026: "da Data 25/04/2026 Compra:"  → Data ANTES da data
+#   2023: "13/04/2024 Data da Compra:"  → data ANTES de Data
+_DATA_OCR_RE = re.compile(r"\bData\b[^/\n]*?(\d{2})/(\d{2})/(\d{4})", re.IGNORECASE)
+_DATA_OCR_REVERSED_RE = re.compile(r"(\d{2})/(\d{2})/(\d{4})[^\n]*\bCompra\b", re.IGNORECASE)
+_NUMERO_OCR_RE = re.compile(r"\bN[uú]mero\b[^\n]*?\b(\d{5,})\b", re.IGNORECASE)
 
 # OCR layout: linha de aposta começa com status.
 # Dois subformatos observados:
@@ -327,13 +334,20 @@ def _parse_ocr(texto: str) -> CompraExtraida:
     """
     compra = CompraExtraida()
 
-    m = _NUMERO_COMPRA_RE.search(texto)
+    m = _NUMERO_COMPRA_RE.search(texto) or _NUMERO_OCR_RE.search(texto)
     if m:
         compra.numero_compra = m.group(1)
 
-    m = _DATA_COMPRA_RE.search(texto) or _DATA_ANTIGA_RE.search(texto)
+    m = (
+        _DATA_COMPRA_RE.search(texto)
+        or _DATA_ANTIGA_RE.search(texto)
+        or _DATA_OCR_RE.search(texto)
+        or _DATA_OCR_REVERSED_RE.search(texto)
+    )
     if m:
         compra.data_compra = _parse_data(m.group(1), m.group(2), m.group(3))
+        if compra.data_compra is None:
+            compra.avisos.append(f"data inválida: {m.group(0)!r}")
 
     comprovante: ComprovanteExtraido | None = None
     buffer_dezenas: list[int] = []

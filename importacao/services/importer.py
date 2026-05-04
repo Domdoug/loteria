@@ -164,6 +164,34 @@ def reprocess_arquivo(arquivo: ArquivoImportado, *, force_ocr: bool = False) -> 
     return comprovantes > 0
 
 
+def reparse_from_stored(arquivo: ArquivoImportado) -> bool:
+    """Re-parse do texto já armazenado sem re-extrair o PDF.
+
+    Útil para atualizar data_jogo e codigo_autenticacao quando o parser melhorou
+    mas os PDFs não precisam ser relidos.
+    Retorna True se pelo menos um comprovante foi criado.
+    """
+    if not arquivo.texto_extraido:
+        return False
+
+    texto_resultado = PdfTextResult(
+        texto=arquivo.texto_extraido,
+        paginas=arquivo.quantidade_paginas or 0,
+        extrator="stored",
+    )
+
+    try:
+        with transaction.atomic():
+            Comprovante.objects.filter(arquivo_importado=arquivo).delete()
+            comprovantes = _persist_comprovantes(arquivo, texto_resultado)
+            arquivo.save(update_fields=["texto_extraido", "status_importacao", "mensagem_erro"])
+    except Exception as exc:
+        logger.exception("Falha ao re-parsear %s", arquivo.nome_arquivo_atual)
+        return False
+
+    return comprovantes > 0
+
+
 def import_folder(folder: Path, *, dry_run: bool = False) -> ImportSummary:
     """Processa todos os PDFs da pasta indicada, idempotente por hash."""
     summary = ImportSummary()
