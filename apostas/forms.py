@@ -21,8 +21,3 @@ class FiltroComprovanteForm(forms.Form):
         label="Tipo de jogo",
         empty_label="Todos",
     )
-    ver_outros = forms.BooleanField(
-        required=False,
-        label="Ver outros",
-        help_text="Reservado para detalhamentos adicionais.",
-    )
