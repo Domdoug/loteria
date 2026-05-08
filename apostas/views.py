@@ -1,5 +1,6 @@
 from django.shortcuts import render
 
+from resultados.models import ResultadoMegaSena
 from resultados.services.megasena_statistics import numeros_mais_sorteados
 
 from .forms import FiltroComprovanteForm
@@ -33,5 +34,6 @@ def listagem_comprovantes(request):
         "total_por_tipo_jogo": total_por_tipo_jogo(qs),
         "numeros_mais_jogados": numeros_mais_jogados(qs),
         "numeros_mais_sorteados_megasena": numeros_mais_sorteados(),
+        "ultimo_concurso_megasena": ResultadoMegaSena.objects.order_by("-concurso").first(),
     }
     return render(request, "apostas/listagem.html", contexto)

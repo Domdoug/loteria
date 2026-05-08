@@ -45,6 +45,16 @@
 
   <section>
     <h2>Números mais sorteados — Mega-Sena (oficial)</h2>
+    <div style="display:flex; align-items:center; gap:14px; margin-bottom:12px; flex-wrap:wrap;">
+      <form method="post" action="{% url 'resultados:atualizar_megasena' %}" enctype="multipart/form-data" style="display:flex; gap:8px; align-items:center;">
+        {% csrf_token %}
+        <input type="file" name="xlsx" accept=".xlsx" style="font-size:13px;">
+        <button type="submit" style="padding:5px 12px; background:#2563eb; color:#fff; border:0; border-radius:6px; cursor:pointer; font-size:13px;">Atualizar</button>
+      </form>
+      {% if ultimo_concurso_megasena %}
+      <span style="font-size:13px; color:#5a6471;">Último: concurso {{ ultimo_concurso_megasena.concurso }} em {{ ultimo_concurso_megasena.data_apuracao }}</span>
+      {% endif %}
+    </div>
     {% if numeros_mais_sorteados_megasena %}
     <table>
       <thead><tr><th>Dezena</th><th>Frequência</th></tr></thead>

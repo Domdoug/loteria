@@ -30,6 +30,15 @@
     <h1>Loterias da Caixa — Comprovantes</h1>
     <span class="total">Total gasto: R$ {{ total_gasto|floatformat:2 }}</span>
   </header>
-  <main>{% block content %}{% endblock %}</main>
+  <main>
+    {% if messages %}
+    <ul style="list-style:none; margin:0 0 16px; padding:0;">
+      {% for msg in messages %}
+      <li style="padding:10px 14px; border-radius:6px; font-size:14px; margin-bottom:6px; {% if 'error' in msg.tags %}background:#fee2e2; color:#991b1b;{% else %}background:#dcfce7; color:#166534;{% endif %}">{{ msg }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
 </body>
 </html>
