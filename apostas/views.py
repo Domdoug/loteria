@@ -6,6 +6,7 @@ from resultados.services.megasena_statistics import numeros_mais_sorteados
 from .forms import FiltroComprovanteForm
 from .services.filters import filtrar_comprovantes
 from .services.statistics import (
+    acertos_megasena,
     numeros_mais_jogados,
     total_gasto,
     total_por_tipo_jogo,
@@ -35,5 +36,6 @@ def listagem_comprovantes(request):
         "numeros_mais_jogados": numeros_mais_jogados(qs),
         "numeros_mais_sorteados_megasena": numeros_mais_sorteados(),
         "ultimo_concurso_megasena": ResultadoMegaSena.objects.order_by("-concurso").first(),
+        "acertos_megasena": acertos_megasena(qs),
     }
     return render(request, "apostas/listagem.html", contexto)

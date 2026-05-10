@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load apostas_extras %}
 {% block title %}Comprovantes — Loteria{% endblock %}
 
 {% block content %}
@@ -98,11 +99,13 @@
         <th>Valor (R$)</th>
         <th>Arquivo</th>
         <th>Cód. compra</th>
+        <th>Acertos</th>
       </tr>
     </thead>
     <tbody>
       {% for c in comprovantes %}
-      <tr>
+      {% with melhor=acertos_megasena|get_item:c.id %}
+      <tr class="{% if melhor %}acerto-{{ melhor }}{% endif %}">
         <td>{{ c.data_jogo|default:"—" }}</td>
         <td><span class="badge">{{ c.tipo_jogo.nome }}</span></td>
         <td>{{ c.apostas.count }}</td>
@@ -112,7 +115,13 @@
         <td>{{ c.valor_total_aposta|floatformat:2 }}</td>
         <td>{{ c.arquivo_importado.nome_arquivo_atual }}</td>
         <td>{{ c.codigo_autenticacao|default:"—" }}</td>
+        <td>
+          {% if melhor %}
+          <span class="badge-acerto badge-acerto-{{ melhor }}">{{ melhor }} acerto{{ melhor|pluralize:"s" }}</span>
+          {% endif %}
+        </td>
       </tr>
+      {% endwith %}
       {% endfor %}
     </tbody>
   </table>

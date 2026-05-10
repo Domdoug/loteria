@@ -23,12 +23,25 @@
     .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
     .badge { background: #eef2ff; color: #1e3a8a; padding: 2px 8px; border-radius: 999px; font-size: 12px; }
     .empty { color: #6b7280; font-style: italic; }
+    .acerto-4 { background: #fef9c3 !important; }
+    .acerto-5 { background: #fed7aa !important; }
+    .acerto-6 { background: #bbf7d0 !important; }
+    .badge-acerto { padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+    .badge-acerto-4 { background: #fef08a; color: #713f12; }
+    .badge-acerto-5 { background: #fb923c; color: #fff; }
+    .badge-acerto-6 { background: #16a34a; color: #fff; }
   </style>
 </head>
 <body>
   <header>
     <h1>Loterias da Caixa — Comprovantes</h1>
-    <span class="total">Total gasto: R$ {{ total_gasto|floatformat:2 }}</span>
+    <div style="display:flex; gap:10px; align-items:center;">
+      <form method="post" action="{% url 'importacao:importar_pdfs' %}" style="margin:0;">
+        {% csrf_token %}
+        <button type="submit" style="padding:6px 14px; background:#374151; color:#fff; border:0; border-radius:6px; cursor:pointer; font-size:14px;">&#8635; Atualizar comprovantes</button>
+      </form>
+      <span class="total">Total gasto: R$ {{ total_gasto|floatformat:2 }}</span>
+    </div>
   </header>
   <main>
     {% if messages %}
